@@ -35,15 +35,17 @@ func main() {
 	)
 	checkErr(err)
 
+	// ch.Qos()
+
 	// receive messages
 	msgs, err := ch.Consume(
 		q.Name,
 		"consumer1",
-		false,
-		false,
-		false,
-		false,
-		nil,
+		false, // autoAck
+		false, // exclusive
+		false, // noLocal
+		false, // noWait
+		nil,   // args
 	)
 	checkErr(err)
 
@@ -55,6 +57,10 @@ func main() {
 				ex = "(default)"
 			}
 			log.Printf("Received: %s from: %s\n", d.Body, ex)
+			// checkErr(
+			// 	d.Ack(false),
+			// )
+			// log.Printf("Acknowledged")
 		}
 	}()
 

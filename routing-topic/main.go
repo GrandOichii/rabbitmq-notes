@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
-	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -31,10 +29,10 @@ func consumer(args []string) {
 	defer ch.Close()
 
 	// open an exchange
-	exName := "pubsub"
+	exName := "routing"
 	err = ch.ExchangeDeclare(
 		exName,
-		"fanout",
+		"topic",
 		false,
 		false,
 		false,
@@ -43,11 +41,13 @@ func consumer(args []string) {
 	)
 	checkErr(err)
 
+	route := args[0]
+
 	// open a queue
 	queue, err := ch.QueueDeclare(
-		fmt.Sprintf("pubsub-consumer-%s", args[0]),
+		"",
 		true,
-		false,
+		true, // will delete itself after closing
 		false,
 		false,
 		nil,
@@ -57,7 +57,7 @@ func consumer(args []string) {
 	// bind the queue
 	ch.QueueBind(
 		queue.Name,
-		"",
+		route,
 		exName,
 		false,
 		nil,
@@ -85,7 +85,12 @@ func consumer(args []string) {
 	<-make(chan bool)
 }
 
-func producer(args []string) {
+func publishTo(args []string) {
+	if len(args) != 1 {
+		fmt.Println("Invalid amount of command line arguments")
+		os.Exit(1)
+	}
+
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672")
 	checkErr(err)
 	defer conn.Close()
@@ -96,10 +101,10 @@ func producer(args []string) {
 	defer ch.Close()
 
 	// open an exchange
-	exName := "pubsub"
+	exName := "routing"
 	err = ch.ExchangeDeclare(
 		exName,
-		"fanout",
+		"topic",
 		false,
 		false,
 		false,
@@ -108,35 +113,26 @@ func producer(args []string) {
 	)
 	checkErr(err)
 
-	fmt.Println("Running producer, precc CTRL+C to stop")
+	route := args[0]
 
-	go func() {
-		for i := 0; true; i++ {
-			text := fmt.Sprintf("Message to process: %v", i)
-			msg := amqp.Publishing{
-				ContentType: "/text/plain",
-				Body:        []byte(text),
-			}
-			err = ch.Publish(
-				exName, // default exchange
-				"",
-				false,
-				false,
-				msg,
-			)
-			checkErr(err)
-			fmt.Printf("Published \"%s\"\n", text)
-
-			waitFor := rand.Intn(4) + 1
-			time.Sleep(time.Duration(waitFor) * time.Second)
-		}
-	}()
-	<-make(chan bool)
+	text := fmt.Sprintf("Sending message to route %s", route)
+	msg := amqp.Publishing{
+		ContentType: "/text/plain",
+		Body:        []byte(text),
+	}
+	err = ch.Publish(
+		exName,
+		route,
+		false,
+		false,
+		msg,
+	)
+	checkErr(err)
 }
 
 var modeMap map[string]func([]string) = map[string]func([]string){
-	"consumer": consumer,
-	"producer": producer,
+	"consumer":  consumer,
+	"publishto": publishTo,
 }
 
 func main() {
